@@ -3,9 +3,13 @@ import requests
 import json
 from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Font, Border, Side, Alignment
+from openpyxl.drawing.image import Image
+import os
 
 # --- CONFIGURATION ---
 EXCEL_FILE_PATH = "my_record_book.xlsx"
+SIGNATURE_IMAGE_PATH = "signature.png"  # Path to your signature image file
+DESIGNATION_TEXT = "Industrial Supervisor"  # Your designation
 
 # --- OLLAMA LLM CONFIGURATION ---
 OLLAMA_MODEL = "gemma3:4b"
@@ -14,7 +18,8 @@ OLLAMA_HOST = "http://localhost:11434"
 
 def get_activity_num_with_ollama(task_description, activity_list, model=OLLAMA_MODEL, host=OLLAMA_HOST):
     """
-    Uses the LLM to find all matching activity numbers for a given task description.
+    Uses the LLM to find matching activity numbers for a given task description.
+    Constrains the output to between 2 and 6 most relevant activities.
 
     Args:
         task_description (str): The description of the work carried out.
@@ -23,26 +28,32 @@ def get_activity_num_with_ollama(task_description, activity_list, model=OLLAMA_M
         host (str): The URL of the Ollama API endpoint.
 
     Returns:
-        str: A comma-separated string of the most relevant activity numbers, or "N/A" on failure.
+        str: A comma-separated string of 2-6 most relevant activity numbers, or "N/A" on failure.
     """
     if not activity_list:
         return "N/A"
 
     activities_str = "\n".join(activity_list)
 
-    # Updated prompt to ask for multiple, comma-separated activity numbers.
+    # Updated prompt to ask for 2-6 most relevant activity numbers.
     prompt = f"""
-    You are a precise project management assistant. Your task is to analyze a work description and identify ALL relevant activities from the provided list that apply to it.
-    You must respond with ONLY the corresponding activity numbers, separated by a comma and a space. Do not add any explanation or other text.
+    You are a precise project management assistant. Your task is to analyze a work description and identify the MOST RELEVANT activities from the provided list.
+    
+    IMPORTANT RULES:
+    1. You MUST select between 2 and 6 activity numbers (minimum 2, maximum 6).
+    2. Choose only the activities that are directly relevant to the work described.
+    3. Rank them by relevance and select the top 2-6 matches.
+    4. Respond with ONLY the activity numbers, separated by a comma and a space.
+    5. Do not add any explanation or other text.
 
-    For example, if the work description matches activities "3.4 Prepare database/file specifications" and "4.2 Program code", your entire response must be "3.4, 4.2".
+    For example, if the work description matches activities "3.4 Prepare database/file specifications", "4.2 Program code", and "4.5 Test code", your entire response must be "3.4, 4.2, 4.5".
 
     Here is the list of official activities:
     ---
     {activities_str}
     ---
 
-    Now, determine all relevant activity numbers for the following work description:
+    Now, determine between 2 and 6 most relevant activity numbers for the following work description:
     "{task_description}"
     """
 
@@ -57,6 +68,22 @@ def get_activity_num_with_ollama(task_description, activity_list, model=OLLAMA_M
 
         response_data = response.json()
         activity_num = response_data.get('response', 'N/A').strip()
+
+        # Validate and enforce 2-6 activity numbers constraint
+        if activity_num != 'N/A':
+            # Split by comma to get individual activity numbers
+            activities = [a.strip() for a in activity_num.split(',') if a.strip()]
+
+            # Enforce minimum of 2 and maximum of 6
+            if len(activities) < 2:
+                print(f"  - Warning: LLM returned {len(activities)} activity number(s), less than minimum of 2. Keeping as is.")
+            elif len(activities) > 6:
+                print(f"  - Warning: LLM returned {len(activities)} activity numbers, trimming to maximum of 6.")
+                activities = activities[:6]
+
+            # Rejoin the validated activities
+            activity_num = ", ".join(activities)
+
         return activity_num
 
     except requests.exceptions.RequestException as e:
@@ -129,6 +156,13 @@ def create_table_structure(ws, start_row):
     ws[f'A{start_row + 13}'].value = "DESIGNATION"
     ws[f'A{start_row + 13}'].font = bold_font
     ws.merge_cells(f'C{start_row + 13}:D{start_row + 13}')
+    ws[f'C{start_row + 13}'].value = "SIGNATURE"
+    ws[f'C{start_row + 13}'].font = bold_font
+    ws[f'C{start_row + 13}'].alignment = center_align
+
+    # Set row height for signature row to accommodate image
+    ws.row_dimensions[start_row + 13].height = 40
+
     for row in ws.iter_rows(min_row=start_row, max_row=start_row + 13, min_col=1, max_col=4):
         for cell in row:
             cell.border = thin_border
@@ -227,6 +261,32 @@ def generate_weekly_report(start_date_str, end_date_str, sheet_name, task_sheet_
             ws[f'C{row_offset + 10}'].value = problems
             ws[f'D{row_offset + 10}'].value = solutions
 
+            # Insert signature image locked to cell boundaries
+            if os.path.exists(SIGNATURE_IMAGE_PATH):
+                img = Image(SIGNATURE_IMAGE_PATH)
+
+                # Resize image to fit within the merged C-D cells
+                # Keep aspect ratio but constrain to cell dimensions
+                img.width = 120
+                img.height = 35
+
+                # Anchor the image to cell C in the signature row
+                # The image will be positioned at the top-left corner of cell C
+                img.anchor = f'C{row_offset + 13}'
+
+                ws.add_image(img)
+
+                # Clear the "SIGNATURE" text since image will be there
+                ws[f'C{row_offset + 13}'].value = ""
+            else:
+                print(f"Warning: Signature image not found at '{SIGNATURE_IMAGE_PATH}'.")
+                # Keep "SIGNATURE" text if no image found
+
+            # Add designation text in column A (top-left of merged A-B cells in row 13)
+            ws[f'A{row_offset + 13}'].value = f"DESIGNATION\n{DESIGNATION_TEXT}"
+            ws[f'A{row_offset + 13}'].font = Font(bold=True)
+            ws[f'A{row_offset + 13}'].alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+
             row_offset += 16
             is_new_week = True
             weekly_tasks_summary = ""
@@ -239,10 +299,9 @@ def generate_weekly_report(start_date_str, end_date_str, sheet_name, task_sheet_
 
 if __name__ == "__main__":
     START_DATE = "2025-05-15"
-    END_DATE = "2025-09-30"
-    SHEET_NAME = "log3"
+    END_DATE = "2025-11-17"
+    SHEET_NAME = "log"
     TASK_SHEET_NAME = "task_sheet"
     ACTIVITY_NUMS_SHEET_NAME = "activity_nums"
 
     generate_weekly_report(START_DATE, END_DATE, SHEET_NAME, TASK_SHEET_NAME, ACTIVITY_NUMS_SHEET_NAME)
-
