@@ -76,13 +76,14 @@ def generate_summary_with_ollama(tasks_for_week, model=OLLAMA_MODEL, host=OLLAMA
         return "No specific problems noted.", "Solutions were implemented as part of the tasks."
 
     logger.info("Generating summary for week tasks (%d chars)", len(tasks_for_week))
-    prompt = f"""
-    Based on the following list of tasks completed in a week, act as a project manager's assistant 
-    to infer one potential problem or challenge and one corresponding solution.
-    Your response MUST be a single, valid JSON object with two keys: "problems_encountered" and "solutions_found".
-    Do not add any text before or after the JSON object.
+    prompt = f"""Based on the following list of tasks completed in a week, reflect on your work to identify one potential problem or challenge, along with a corresponding solution. 
+Act as if you are considering your own work week and utilize your understanding of typical issues in project work to generate realistic problems and solutions. 
+Keep the problems and solutions concise, ideally within two or three sentences each. 
+Your response must be formatted as a single valid JSON object with two keys: "problems_encountered" and "solutions_found." 
+Imagine this is written at the end of every week as part of a professional logbook. 
+Do not include any text before or after the JSON object. 
 
-    Tasks for the week:
+Tasks for the week:
     ---
     {tasks_for_week}
     ---
@@ -112,7 +113,8 @@ def generate_supervisor_comment_with_ollama(tasks_for_week, model=OLLAMA_MODEL, 
     prompt = f"""
     You are an Industrial Supervisor reviewing a student's weekly log book.
     Based on the following tasks completed by the student this week, write a brief, professional, and encouraging comment approving their work.
-    The comment should be 1-2 sentences long.
+    The comment 1-2 sentences long is enough. No need of over appreciation. Just a simple professional comment.
+    In the output, do not include any text other than the comment itself. 
     
     Tasks:
     {tasks_for_week}

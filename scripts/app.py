@@ -7,8 +7,8 @@ from openpyxl.drawing.image import Image
 import os
 
 # --- CONFIGURATION ---
-EXCEL_FILE_PATH = "my_record_book.xlsx"
-SIGNATURE_IMAGE_PATH = "signature.png"  # Path to your signature image file
+EXCEL_FILE_PATH = "../my_record_book.xlsx"
+SIGNATURE_IMAGE_PATH = "../signature.png"  # Path to your signature image file
 DESIGNATION_TEXT = "Industrial Supervisor"  # Your designation
 
 # --- OLLAMA LLM CONFIGURATION ---
@@ -98,16 +98,17 @@ def generate_summary_with_ollama(tasks_for_week, model=OLLAMA_MODEL, host=OLLAMA
     if not tasks_for_week.strip():
         return "No specific problems noted.", "Solutions were implemented as part of the tasks."
 
-    prompt = f"""
-    Based on the following list of tasks completed in a week, act as a project manager's assistant 
-    to infer one potential problem or challenge and one corresponding solution.
-    Your response MUST be a single, valid JSON object with two keys: "problems_encountered" and "solutions_found".
-    Do not add any text before or after the JSON object.
+    prompt = f"""Based on the following list of tasks completed in a week, reflect on your work to identify one potential problem or challenge, along with a corresponding solution. 
+Act as if you are considering your own work week and utilize your understanding of typical issues in project work to generate realistic problems and solutions. 
+Keep the problems and solutions concise, ideally within two or three sentences each. 
+Your response must be formatted as a single valid JSON object with two keys: "problems_encountered" and "solutions_found." 
+Imagine this is written at the end of every week as part of a professional logbook. 
+Do not include any text before or after the JSON object. 
 
-    Tasks for the week:
-    ---
-    {tasks_for_week}
-    ---
+Tasks for the week:
+---
+{tasks_for_week}
+---
     """
     try:
         payload = {"model": model, "prompt": prompt, "format": "json", "stream": False}

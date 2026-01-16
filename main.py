@@ -183,6 +183,47 @@ def generate_ai_comment(week_id: int, db: Session = Depends(get_db)):
     db.commit()
     return {"comment": comment}
 
+@app.post("/api/supervisor/reports/{report_id}/comment-all")
+def update_all_comments(report_id: int, comment: str = Form(...), db: Session = Depends(get_db)):
+    """Apply the same comment to all weeks in a report"""
+    logger.info("Updating all comments for report %s", report_id)
+    report = db.query(Report).filter(Report.id == report_id).first()
+    if not report:
+        logger.warning("Report %s not found for bulk comment", report_id)
+        raise HTTPException(status_code=404, detail="Report not found")
+
+    weeks = db.query(WeekEntry).filter(WeekEntry.report_id == report_id).all()
+    for week in weeks:
+        week.supervisor_comment = comment
+
+    db.commit()
+    logger.info("Updated %d weeks with bulk comment", len(weeks))
+    return {"status": "updated", "weeks_updated": len(weeks)}
+
+@app.post("/api/supervisor/reports/{report_id}/generate-ai-comments-all")
+def generate_ai_comments_all(report_id: int, db: Session = Depends(get_db)):
+    """Generate AI comments for all weeks in a report"""
+    logger.info("Generating AI comments for all weeks in report %s", report_id)
+    report = db.query(Report).filter(Report.id == report_id).first()
+    if not report:
+        logger.warning("Report %s not found for bulk AI comment", report_id)
+        raise HTTPException(status_code=404, detail="Report not found")
+
+    weeks = db.query(WeekEntry).filter(WeekEntry.report_id == report_id).all()
+    updated_weeks = []
+
+    for week in weeks:
+        comment = log_generator.generate_supervisor_comment_with_ollama(week.tasks_summary)
+        week.supervisor_comment = comment
+        updated_weeks.append({
+            "id": week.id,
+            "comment": comment
+        })
+
+    db.commit()
+    logger.info("Generated AI comments for %d weeks", len(weeks))
+    return {"weeks": updated_weeks}
+
 @app.post("/api/supervisor/reports/{report_id}/finalize")
 async def finalize_report(
     report_id: int,
